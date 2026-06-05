@@ -45,9 +45,18 @@ impl BitmapFrameAllocator {
         }
     }
 
-    /// Expose frame count for heap allocator
     pub fn frame_count(&self) -> usize {
         self.frame_count
+    }
+
+    /// Check if a specific frame is currently free
+    pub fn is_frame_free(&self, frame_number: usize) -> bool {
+        if frame_number >= self.frame_count {
+            return false;
+        }
+        let byte_index = frame_number / 8;
+        let bit_index = frame_number % 8;
+        (self.bitmap[byte_index] & (1 << bit_index)) == 0
     }
 
     pub fn mark_frame_as_used(&mut self, frame_number: usize) {
@@ -91,4 +100,4 @@ impl FrameAllocator for BitmapFrameAllocator {
     }
 }
 
-// TODO: Add `is_frame_free` method for better contiguous allocation
+// TODO: Consider adding a more efficient way to find contiguous regions (e.g. using bit operations)
