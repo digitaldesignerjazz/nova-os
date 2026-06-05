@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 use uart_16550::SerialPort;
 
@@ -16,38 +17,50 @@ fn init_serial() {
     }
 }
 
-/// Print a string to the serial port
-fn serial_print(msg: &str) {
+/// Write a string to serial
+fn serial_print(args: fmt::Arguments) {
     unsafe {
         if let Some(ref mut serial) = SERIAL {
-            for byte in msg.bytes() {
-                serial.send(byte);
-            }
+            let _ = serial.write_fmt(args);
         }
     }
 }
 
-/// Kernel entry point called by the bootloader
+/// println! macro for kernel
+#[macro_export]
+macro_rules! println {
+    () => (serial_print(format_args!("\n")));
+    ($($arg:tt)*) => (serial_print(format_args!("{}\n", format_args!($($arg)*))));
+}
+
+/// print! macro for kernel
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => (serial_print(format_args!($($arg)*)));
+}
+
+/// Kernel entry point
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     init_serial();
 
-    serial_print("\n");
-    serial_print("========================================\n");
-    serial_print("  Nova OS Kernel - Phase 1 Booted!\n");
-    serial_print("  Emotional Swarm-Based Operating System\n");
-    serial_print("  Esslinger & Co. | v10.0 Aligned\n");
-    serial_print("========================================\n\n");
-    serial_print("Serial output initialized successfully.\n");
-    serial_print("Next: Memory management + Self-improving scheduler\n\n");
+    println!();
+    println!("========================================");
+    println!("  Nova OS Kernel - Phase 1 Booted!");
+    println!("  Emotional Swarm-Based Operating System");
+    println!("  Esslinger & Co. | v10.0 Aligned");
+    println!("========================================");
+    println!();
+    println!("Serial output + println! macro working.");
+    println!("Next steps: Bootloader integration + Memory management");
+    println!();
 
-    // Kernel main loop (will be replaced by scheduler later)
     loop {}
 }
 
-/// Panic handler for no_std environment
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    serial_print("\n!!! KERNEL PANIC !!!\n");
+fn panic(info: &PanicInfo) -> ! {
+    println!("\n!!! KERNEL PANIC !!!");
+    println!("{:?}", info);
     loop {}
 }
