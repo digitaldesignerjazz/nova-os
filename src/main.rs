@@ -87,8 +87,8 @@ pub extern "C" fn _start() -> ! {
         let _ = init_heap(&mut frame_allocator, heap_size);
     }
 
-    // === Emotional Scheduler Demo ===
-    println!("\n=== Emotional Scheduler Demo ===");
+    // === Emotional Scheduler + Propagation Demo ===
+    println!("\n=== Emotional Runtime + Propagation Demo ===");
 
     let scheduler = SelfImprovingScheduler::new();
 
@@ -96,27 +96,34 @@ pub extern "C" fn _start() -> ! {
         scheduler.create_task(10),
         scheduler.create_task(8),
         scheduler.create_task(12),
+        scheduler.create_task(9),
     ];
 
-    // Simulate some feedback to evolve emotional states
-    scheduler.collect_feedback(&mut tasks[0], true, 25);   // Should become Focused
-    scheduler.collect_feedback(&mut tasks[1], false, 120); // Should become Stressed
-    scheduler.collect_feedback(&mut tasks[2], true, 200);  // Should become Curious
+    // Evolve some emotional states through feedback
+    scheduler.collect_feedback(&mut tasks[0], true, 20);   // -> Focused
+    scheduler.collect_feedback(&mut tasks[2], true, 180);  // -> Curious
 
-    println!("\nBefore scheduling:");
+    println!("\nInitial emotional states:");
     for task in &tasks {
-        println!("  Task {}: priority={}, emotional={:?}", task.id, task.priority, task.emotional_state);
+        println!("  Task {}: {:?}", task.id, task.emotional_state);
+    }
+
+    // Propagate emotion from the Focused task to others
+    scheduler.propagate_emotion(&tasks[0], &mut tasks);
+
+    println!("\nAfter emotional propagation from Task 0 (Focused):");
+    for task in &tasks {
+        println!("  Task {}: {:?}", task.id, task.emotional_state);
     }
 
     scheduler.schedule(&mut tasks);
 
-    println!("\nAfter emotional-aware scheduling (sorted):");
+    println!("\nFinal scheduled order (emotional state considered):");
     for task in &tasks {
-        println!("  Task {}: priority={}, emotional={:?}", task.id, task.priority, task.emotional_state);
+        println!("  Task {}: priority={}, state={:?}", task.id, task.priority, task.emotional_state);
     }
 
-    println!("\nEmotional runtime demo complete.");
-    println!("Next: Deeper swarm integration + persistent emotional state");
+    println!("\nEmotional propagation demo complete.");
 
     loop {}
 }
