@@ -56,8 +56,7 @@ impl Task {
         self.memory_index = (self.memory_index + 1) % self.memory.len();
     }
 
-    /// Returns the most recent N emotional states (newest first).
-    /// This version is more efficient and clearer.
+    /// Returns the 4 most recent emotional states (newest first)
     pub fn get_recent_emotions(&self) -> [Option<EmotionalMemory>; 4] {
         let mut result = [None; 4];
         for i in 0..4 {
@@ -74,7 +73,7 @@ impl Task {
         self.memory[idx].map(|m| m.state)
     }
 
-    /// Check if the task was recently in a stressed state
+    /// Check if this task was in a `Stressed` state recently
     pub fn was_recently_stressed(&self, lookback: usize) -> bool {
         let lookback = lookback.min(self.memory.len());
         for i in 1..=lookback {
@@ -88,7 +87,7 @@ impl Task {
         false
     }
 
-    /// Count occurrences of a specific state in recent history
+    /// Count how many times a specific state appeared in recent history
     pub fn count_recent_state(&self, state: EmotionalState, lookback: usize) -> usize {
         let lookback = lookback.min(self.memory.len());
         let mut count = 0;
@@ -103,12 +102,25 @@ impl Task {
         count
     }
 
-    /// Returns true if the task has shown emotional instability recently
+    /// Returns true if the task has been emotionally unstable recently
     pub fn is_emotionally_unstable(&self, lookback: usize) -> bool {
         self.count_recent_state(EmotionalState::Stressed, lookback) >= 2
     }
 
-    /// Helper: get index that is `steps` positions before current write index
+    /// Returns a resistance factor (0.0 - 1.0) based on recent emotional memory.
+    /// Higher stress count = higher resistance to emotional influence.
+    pub fn emotional_resistance(&self) -> f32 {
+        let stress_count = self.count_recent_state(EmotionalState::Stressed, 3);
+
+        match stress_count {
+            0 => 1.0,
+            1 => 0.75,
+            2 => 0.55,
+            _ => 0.35, // Very resistant if stressed 3+ times recently
+        }
+    }
+
+    /// Helper: get index `steps` positions before the current write position
     #[inline]
     fn prev_index(&self, steps: usize) -> usize {
         (self.memory_index + self.memory.len() - steps) % self.memory.len()
@@ -170,7 +182,7 @@ impl SelfImprovingScheduler {
         }
     }
 
-    /// Multi-hop propagation that respects recent emotional memory
+    /// Multi-hop emotional propagation with dynamic memory-based resistance
     pub fn propagate_emotion_multi_hop(
         &self,
         source: &Task,
@@ -201,15 +213,11 @@ impl SelfImprovingScheduler {
                             continue;
                         }
 
-                        // Use emotional memory for resistance
-                        let resistance = if target.was_recently_stressed(2) || target.is_emotionally_unstable(3) {
-                            0.5
-                        } else {
-                            1.0
-                        };
-
                         let relationship = self.get_relationship_strength(source.id, target.id);
                         let effective = self.compute_effective_influence(base_influence, relationship);
+
+                        // Dynamic resistance based on emotional memory
+                        let resistance = target.emotional_resistance();
                         let final_influence = (effective as f32 * resistance) as i8;
 
                         if final_influence != 0 {
@@ -254,12 +262,8 @@ impl SelfImprovingScheduler {
             let relationship = self.get_relationship_strength(source.id, target.id);
             let effective = self.compute_effective_influence(base_influence, relationship);
 
-            let resistance = if target.was_recently_stressed(2) || target.is_emotionally_unstable(3) {
-                0.55
-            } else {
-                1.0
-            };
-
+            // Dynamic resistance based on emotional memory
+            let resistance = target.emotional_resistance();
             let final_influence = (effective as f32 * resistance) as i8;
 
             if final_influence != 0 {
@@ -325,6 +329,6 @@ impl SelfImprovingScheduler {
 }
 
 // TODO:
-// - Replace placeholder relationship system with real RelationshipGraph from SwarmRuntime
-// - Use more of the emotional memory history (beyond just stress detection)
+// - Replace placeholder relationship system with real RelationshipGraph
+// - Make emotional_resistance consider more memory factors (e.g. recent positive states)
 // - Add emotional decay over time
