@@ -5,10 +5,12 @@ use core::fmt::{self, Write};
 use core::panic::PanicInfo;
 use uart_16550::SerialPort;
 
-/// Global serial port for early kernel output (COM1)
+mod memory;
+use memory::{BitmapFrameAllocator, FrameAllocator, Frame, PAGE_SIZE};
+
+/// Global serial port
 static mut SERIAL: Option<SerialPort> = None;
 
-/// Initialize the serial port (COM1 at 0x3F8)
 fn init_serial() {
     unsafe {
         let mut serial = SerialPort::new(0x3F8);
@@ -17,7 +19,6 @@ fn init_serial() {
     }
 }
 
-/// Write a string to serial
 fn serial_print(args: fmt::Arguments) {
     unsafe {
         if let Some(ref mut serial) = SERIAL {
@@ -26,20 +27,45 @@ fn serial_print(args: fmt::Arguments) {
     }
 }
 
-/// println! macro for kernel
 #[macro_export]
 macro_rules! println {
     () => (serial_print(format_args!("\n")));
     ($($arg:tt)*) => (serial_print(format_args!("{}\n", format_args!($($arg)*))));
 }
 
-/// print! macro for kernel
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => (serial_print(format_args!($($arg)*)));
 }
 
-/// Kernel entry point
+/// Static bitmap for frame allocator (supports up to ~128 MiB of RAM)
+static mut FRAME_BITMAP: [u8; 16 * 1024] = [0; 16 * 1024];
+
+/// Initialize the frame allocator with a stub memory map
+fn init_frame_allocator() -> BitmapFrameAllocator {
+    unsafe {
+        // For now we use a hardcoded memory region (16 MiB - 128 MiB)
+        // This will be replaced with real memory map from bootloader later
+        let memory_start = 0x0100_0000; // 16 MiB
+        let memory_end   = 0x0800_0000; // 128 MiB
+
+        let frame_count = (memory_end - memory_start) / PAGE_SIZE;
+
+        let mut allocator = BitmapFrameAllocator::new(&mut FRAME_BITMAP, frame_count);
+
+        // Mark the first few frames as used (kernel area, etc.)
+        // In a real system we would get this from the bootloader memory map
+        for i in 0..64 {
+            allocator.mark_frame_as_used(i);
+        }
+
+        println!("Frame allocator initialized.");
+        println!("  Managing {} frames ({} MiB)", frame_count, (frame_count * PAGE_SIZE) / (1024 * 1024));
+
+        allocator
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     init_serial();
@@ -51,9 +77,22 @@ pub extern "C" fn _start() -> ! {
     println!("  Esslinger & Co. | v10.0 Aligned");
     println!("========================================");
     println!();
-    println!("Serial output + println! macro working.");
-    println!("Next steps: Bootloader integration + Memory management");
+
+    // Initialize frame allocator
+    let mut frame_allocator = init_frame_allocator();
+
+    // Test frame allocation
+    println!("Testing frame allocation...");
+    if let Some(frame) = frame_allocator.allocate_frame() {
+        println!("  Allocated frame #{}", frame.number());
+    }
+    if let Some(frame) = frame_allocator.allocate_frame() {
+        println!("  Allocated frame #{}", frame.number());
+    }
+
     println!();
+    println!("Frame allocator working!");
+    println!("Next: Heap allocator + Virtual memory");
 
     loop {}
 }
