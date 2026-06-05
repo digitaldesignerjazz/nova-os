@@ -11,7 +11,6 @@ mod allocator;
 use memory::{BitmapFrameAllocator, FrameAllocator, Frame, PAGE_SIZE};
 use allocator::init_heap;
 
-/// Global serial port
 static mut SERIAL: Option<SerialPort> = None;
 
 fn init_serial() {
@@ -41,15 +40,12 @@ macro_rules! print {
     ($($arg:tt)*) => (serial_print(format_args!($($arg)*)));
 }
 
-/// Static bitmap for frame allocator (supports up to ~128 MiB)
 static mut FRAME_BITMAP: [u8; 16 * 1024] = [0; 16 * 1024];
 
-/// Initialize the frame allocator with a stub memory map
 fn init_frame_allocator() -> BitmapFrameAllocator {
     unsafe {
-        let memory_start = 0x0100_0000; // 16 MiB
-        let memory_end   = 0x0800_0000; // 128 MiB
-
+        let memory_start = 0x0100_0000;
+        let memory_end   = 0x0800_0000;
         let frame_count = (memory_end - memory_start) / PAGE_SIZE;
 
         let mut allocator = BitmapFrameAllocator::new(&mut FRAME_BITMAP, frame_count);
@@ -77,7 +73,6 @@ pub extern "C" fn _start() -> ! {
     println!("========================================");
     println!();
 
-    // === Frame Allocator ===
     let mut frame_allocator = init_frame_allocator();
 
     // Test frame allocation
@@ -85,23 +80,21 @@ pub extern "C" fn _start() -> ! {
         println!("Allocated test frame #{}", frame.number());
     }
 
-    // === Heap Allocator ===
-    // For now we use a simple fixed region for the heap (will be improved)
+    // === Heap Allocator (now using frame allocator) ===
     unsafe {
-        // Allocate a few frames for the heap
-        let heap_start = 0x2000_0000; // 512 MiB (example high address)
-        let heap_size = 1024 * 1024;  // 1 MiB heap
-
-        init_heap(heap_start, heap_size);
-        println!("Heap allocator initialized ({} bytes)", heap_size);
+        let heap_size = 1024 * 1024; // 1 MiB
+        match init_heap(&mut frame_allocator, heap_size) {
+            Ok(()) => println!("Heap initialized using frame allocator ({} bytes)", heap_size),
+            Err(e) => println!("Heap init failed: {}", e),
+        }
     }
 
     // Test heap allocation
     let boxed = alloc::boxed::Box::new(42u32);
-    println!("Heap allocation test: boxed value = {}", *boxed);
+    println!("Heap test: boxed = {}", *boxed);
 
     println!();
-    println!("Frame + Heap working! Next: Virtual memory / Paging");
+    println!("Frame + Heap integration working!");
 
     loop {}
 }
