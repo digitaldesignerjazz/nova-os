@@ -87,8 +87,8 @@ pub extern "C" fn _start() -> ! {
         let _ = init_heap(&mut frame_allocator, heap_size);
     }
 
-    // === Emotional Scheduler + Propagation Demo ===
-    println!("\n=== Emotional Runtime + Propagation Demo ===");
+    // === Multi-hop Emotional Propagation Demo ===
+    println!("\n=== Multi-Hop Emotional Propagation Demo ===");
 
     let scheduler = SelfImprovingScheduler::new();
 
@@ -97,33 +97,35 @@ pub extern "C" fn _start() -> ! {
         scheduler.create_task(8),
         scheduler.create_task(12),
         scheduler.create_task(9),
+        scheduler.create_task(7),
     ];
 
-    // Evolve some emotional states through feedback
-    scheduler.collect_feedback(&mut tasks[0], true, 20);   // -> Focused
-    scheduler.collect_feedback(&mut tasks[2], true, 180);  // -> Curious
+    // Create interesting emotional starting points
+    scheduler.collect_feedback(&mut tasks[0], true, 15);   // Task 0 -> Focused
+    scheduler.collect_feedback(&mut tasks[3], true, 220);  // Task 3 -> Curious
 
-    println!("\nInitial emotional states:");
-    for task in &tasks {
-        println!("  Task {}: {:?}", task.id, task.emotional_state);
+    println!("\nInitial states:");
+    for t in &tasks {
+        println!("  Task {}: {:?}", t.id, t.emotional_state);
     }
 
-    // Propagate emotion from the Focused task to others
-    scheduler.propagate_emotion(&tasks[0], &mut tasks);
+    // Propagate with 2 hops (multi-hop emotional tracking)
+    println!("\nPropagating emotions with max 2 hops...");
+    scheduler.propagate_emotion_multi_hop(&tasks[0], &mut tasks, 2);
 
-    println!("\nAfter emotional propagation from Task 0 (Focused):");
-    for task in &tasks {
-        println!("  Task {}: {:?}", task.id, task.emotional_state);
+    println!("\nFinal emotional states after multi-hop propagation:");
+    for t in &tasks {
+        println!("  Task {}: {:?}", t.id, t.emotional_state);
     }
 
     scheduler.schedule(&mut tasks);
 
-    println!("\nFinal scheduled order (emotional state considered):");
-    for task in &tasks {
-        println!("  Task {}: priority={}, state={:?}", task.id, task.priority, task.emotional_state);
+    println!("\nScheduled order (emotional influence applied):");
+    for t in &tasks {
+        println!("  Task {}: state={:?}", t.id, t.emotional_state);
     }
 
-    println!("\nEmotional propagation demo complete.");
+    println!("\nMulti-hop emotional propagation demo complete.");
 
     loop {}
 }
