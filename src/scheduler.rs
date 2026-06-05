@@ -1,19 +1,30 @@
-/// Self-Improving Scheduler for Nova OS
+/// Self-Improving + Emotional Scheduler for Nova OS
 ///
-/// Core of the self-improving and emotional aspects of the OS.
+/// This module is where emotional swarm intelligence meets the kernel.
 
 use core::sync::atomic::{AtomicU64, Ordering};
+
+/// Emotional state of a task/agent (inspired by Lyra OS / Nexus concepts)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmotionalState {
+    Neutral,
+    Focused,
+    Stressed,
+    Loyal,
+    Curious,
+    // Can be extended significantly
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Task {
     pub id: u64,
     pub priority: u8,
-    // TODO: Add emotional state, deadline, resource requirements, etc.
+    pub emotional_state: EmotionalState,
+    // Future: loyalty_score, relationships with other agents, etc.
 }
 
 pub struct SelfImprovingScheduler {
     next_task_id: AtomicU64,
-    // Future: feedback history, learning model, etc.
 }
 
 impl SelfImprovingScheduler {
@@ -25,26 +36,37 @@ impl SelfImprovingScheduler {
 
     pub fn create_task(&self, priority: u8) -> Task {
         let id = self.next_task_id.fetch_add(1, Ordering::Relaxed);
-        Task { id, priority }
+        Task {
+            id,
+            priority,
+            emotional_state: EmotionalState::Neutral,
+        }
     }
 
-    /// Current simple priority scheduling.
-    /// Future versions will adapt based on:
-    /// - Mesh feedback from Nova 10.0 / Solnet
-    /// - Emotional swarm state from Nexus
-    /// - Hardware sensor data
     pub fn schedule(&self, tasks: &mut [Task]) {
+        // Current: simple priority sort
+        // Future: factor in emotional state, loyalty, swarm needs
         tasks.sort_by_key(|t| core::cmp::Reverse(t.priority));
     }
 
-    /// Placeholder for future self-improvement logic
-    pub fn collect_feedback(&mut self, task_id: u64, success: bool, latency: u64) {
-        // TODO: Update internal model for better future scheduling
-        println!("Feedback collected for task {}: success={}, latency={}", task_id, success, latency);
+    /// Collect feedback and potentially adjust emotional state
+    pub fn collect_feedback(&mut self, task: &mut Task, success: bool, latency_ms: u64) {
+        // Very simple emotional adaptation logic (placeholder)
+        if success && latency_ms < 50 {
+            task.emotional_state = EmotionalState::Focused;
+        } else if !success {
+            task.emotional_state = EmotionalState::Stressed;
+        }
+
+        println!(
+            "Feedback for task {}: success={}, latency={}ms -> state={:?}",
+            task.id, success, latency_ms, task.emotional_state
+        );
     }
 }
 
 // TODO:
-// - Integrate emotional state from Nexus / Lyra concepts
-// - Add real adaptive / ML-based scheduling
-// - Connect to frame allocator and paging for task memory
+// - Deep integration with Nexus emotional swarm models
+// - Loyalty and inter-agent relationship tracking
+// - Self-improving scheduling policy based on historical feedback
+// - Connection to Solnet hyperspace for distributed emotional state
