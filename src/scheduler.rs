@@ -1,6 +1,7 @@
 /// Emotional + Self-Improving Scheduler for Nova OS
 ///
-/// Includes multi-hop emotional propagation with relationship-aware influence.
+/// Includes multi-hop emotional propagation with relationship-aware influence
+/// and emotional memory system.
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -56,6 +57,46 @@ impl Task {
 
     pub fn get_recent_emotions(&self) -> [Option<EmotionalMemory>; 4] {
         self.memory
+    }
+
+    /// Returns the most recent emotional state (if any)
+    pub fn get_last_emotional_state(&self) -> Option<EmotionalState> {
+        for i in 0..self.memory.len() {
+            let idx = (self.memory_index + self.memory.len() - 1 - i) % self.memory.len();
+            if let Some(mem) = self.memory[idx] {
+                return Some(mem.state);
+            }
+        }
+        None
+    }
+
+    /// Check if the task was recently in a stressed state
+    pub fn was_recently_stressed(&self, lookback: usize) -> bool {
+        let lookback = lookback.min(self.memory.len());
+        for i in 0..lookback {
+            let idx = (self.memory_index + self.memory.len() - 1 - i) % self.memory.len();
+            if let Some(mem) = self.memory[idx] {
+                if mem.state == EmotionalState::Stressed {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Count how many times a specific state appeared recently
+    pub fn count_recent_state(&self, state: EmotionalState, lookback: usize) -> usize {
+        let lookback = lookback.min(self.memory.len());
+        let mut count = 0;
+        for i in 0..lookback {
+            let idx = (self.memory_index + self.memory.len() - 1 - i) % self.memory.len();
+            if let Some(mem) = self.memory[idx] {
+                if mem.state == state {
+                    count += 1;
+                }
+            }
+        }
+        count
     }
 }
 
@@ -114,7 +155,7 @@ impl SelfImprovingScheduler {
         }
     }
 
-    /// Multi-hop emotional propagation with relationship strength
+    /// Multi-hop emotional propagation that considers recent emotional memory
     pub fn propagate_emotion_multi_hop(
         &self,
         source: &Task,
@@ -145,21 +186,26 @@ impl SelfImprovingScheduler {
                             continue;
                         }
 
+                        // Consider target's recent memory when deciding influence
+                        let resistance = if target.was_recently_stressed(2) { 0.5 } else { 1.0 };
+
                         let relationship = self.get_relationship_strength(source.id, target.id);
                         let effective_influence = self.compute_effective_influence(base_influence, relationship);
 
-                        if effective_influence != 0 {
+                        // Apply memory-based resistance
+                        let final_influence = (effective_influence as f32 * resistance) as i8;
+
+                        if final_influence != 0 {
                             let new_state = self.compute_propagated_state(
                                 &src_task.emotional_state,
                                 &target.emotional_state,
-                                effective_influence,
+                                final_influence,
                             );
 
                             if new_state != target.emotional_state {
                                 println!(
-                                    "[Hop {}] Task {} ({:?}) influenced Task {} -> {:?} (rel={}, eff={})",
-                                    hop, src_task.id, src_task.emotional_state,
-                                    target.id, new_state, relationship, effective_influence
+                                    "[Hop {}] Task {} influenced Task {} -> {:?} (memory resistance applied)",
+                                    hop, src_task.id, target.id, new_state
                                 );
                                 target.emotional_state = new_state;
                                 target.record_emotion(new_state, self.time);
@@ -191,37 +237,27 @@ impl SelfImprovingScheduler {
             let relationship = self.get_relationship_strength(source.id, target.id);
             let effective_influence = self.compute_effective_influence(base_influence, relationship);
 
-            if effective_influence != 0 {
+            // Apply resistance if target was recently stressed
+            let resistance = if target.was_recently_stressed(2) { 0.6 } else { 1.0 };
+            let final_influence = (effective_influence as f32 * resistance) as i8;
+
+            if final_influence != 0 {
                 let new_state = self.compute_propagated_state(
                     &source.emotional_state,
                     &target.emotional_state,
-                    effective_influence,
+                    final_influence,
                 );
 
                 if new_state != target.emotional_state {
                     println!(
-                        "Emotional propagation: Task {} ({:?}) influenced Task {} -> {:?} (rel={})",
-                        source.id, source.emotional_state, target.id, new_state
+                        "Emotional propagation: Task {} influenced Task {} -> {:?}",
+                        source.id, target.id, new_state
                     );
                     target.emotional_state = new_state;
                     target.record_emotion(new_state, self.time);
                 }
             }
         }
-    }
-
-    /// Calculate final influence after applying relationship strength.
-    /// Relationship can now amplify (values > 1) or dampen influence.
-    fn compute_effective_influence(&self, base_influence: i8, relationship: i8) -> i8 {
-        if relationship == 0 {
-            return 0;
-        }
-
-        // Allow amplification and dampening
-        let scaled = base_influence as i16 * relationship as i16;
-
-        // Reasonable bounds for early kernel
-        scaled.clamp(-4, 4) as i8
     }
 
     fn calculate_influence_strength(&self, state: &EmotionalState) -> i8 {
@@ -234,11 +270,16 @@ impl SelfImprovingScheduler {
         }
     }
 
-    /// Returns relationship strength as i8.
-    /// Positive = friendly/loyal, Negative = adversarial, 0 = neutral
-    /// TODO: Replace with real relationship/loyalty graph
     fn get_relationship_strength(&self, _from_id: u64, _to_id: u64) -> i8 {
-        1 // Default neutral-friendly relationship
+        1
+    }
+
+    fn compute_effective_influence(&self, base_influence: i8, relationship: i8) -> i8 {
+        if relationship == 0 {
+            return 0;
+        }
+        let scaled = base_influence as i16 * relationship as i16;
+        scaled.clamp(-4, 4) as i8
     }
 
     fn compute_propagated_state(
@@ -263,6 +304,6 @@ impl SelfImprovingScheduler {
 }
 
 // TODO:
-// - Implement real relationship/loyalty graph
-// - Use emotional memory when deciding propagation
-// - Make relationship strength dynamic based on history
+// - Make get_relationship_strength use real RelationshipGraph
+// - Use full emotional memory history for smarter decisions
+// - Add emotional decay over time
