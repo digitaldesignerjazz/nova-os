@@ -1,15 +1,18 @@
-// build.rs - Bootloader configuration for Nova OS
+// build.rs — Bootloader & Kernel Build Configuration for Nova OS
 
 fn main() {
-    // Tell cargo to rerun this script if build.rs changes
     println!("cargo:rerun-if-changed=build.rs");
 
-    // Configure bootloader (modern bootloader crate v0.11+)
-    // This enables physical memory mapping which is useful for later kernel development
+    // Recommended linker settings for kernel
     println!("cargo:rustc-link-arg=-zmax-page-size=0x1000");
 
-    // Note: For full bootable image generation, use:
-    //   cargo bootimage (legacy but still works)
-    // or the modern approach with the bootloader crate as a dependency
-    // See docs/roadmap.md for current recommended steps
+    // Note for developers:
+    // To build a bootable image, you can use:
+    //
+    //   cargo bootimage          (legacy but still works with bootloader = "0.11")
+    //
+    // Or the more modern approach:
+    //   Add a small binary that depends on `bootloader` crate + this kernel.
+    //
+    // See docs/roadmap.md for current status and next steps.
 }
