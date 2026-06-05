@@ -1,7 +1,7 @@
 /// Emotional + Self-Improving Scheduler for Nova OS
 ///
 /// Includes multi-hop emotional propagation with relationship-aware influence
-/// and emotional memory system.
+/// and a more developed emotional memory system.
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -50,19 +50,26 @@ pub struct Task {
 }
 
 impl Task {
+    /// Record a new emotional state in the circular history buffer
     pub fn record_emotion(&mut self, state: EmotionalState, time: u64) {
         self.memory[self.memory_index] = Some(EmotionalMemory { state, timestamp: time });
         self.memory_index = (self.memory_index + 1) % self.memory.len();
     }
 
+    /// Returns the 4 most recent emotional states (newest first)
     pub fn get_recent_emotions(&self) -> [Option<EmotionalMemory>; 4] {
-        self.memory
+        let mut result = [None; 4];
+        for i in 0..4 {
+            let idx = (self.memory_index + 4 - i - 1) % 4;
+            result[i] = self.memory[idx];
+        }
+        result
     }
 
-    /// Returns the most recent emotional state (if any)
+    /// Get the most recent emotional state recorded
     pub fn get_last_emotional_state(&self) -> Option<EmotionalState> {
         for i in 0..self.memory.len() {
-            let idx = (self.memory_index + self.memory.len() - 1 - i) % self.memory.len();
+            let idx = (self.memory_index + self.memory.len() - i - 1) % self.memory.len();
             if let Some(mem) = self.memory[idx] {
                 return Some(mem.state);
             }
@@ -70,11 +77,11 @@ impl Task {
         None
     }
 
-    /// Check if the task was recently in a stressed state
+    /// Check if this task was in a stressed state recently
     pub fn was_recently_stressed(&self, lookback: usize) -> bool {
         let lookback = lookback.min(self.memory.len());
         for i in 0..lookback {
-            let idx = (self.memory_index + self.memory.len() - 1 - i) % self.memory.len();
+            let idx = (self.memory_index + self.memory.len() - i - 1) % self.memory.len();
             if let Some(mem) = self.memory[idx] {
                 if mem.state == EmotionalState::Stressed {
                     return true;
@@ -84,12 +91,12 @@ impl Task {
         false
     }
 
-    /// Count how many times a specific state appeared recently
+    /// Count how many times a specific emotional state appeared in recent history
     pub fn count_recent_state(&self, state: EmotionalState, lookback: usize) -> usize {
         let lookback = lookback.min(self.memory.len());
         let mut count = 0;
         for i in 0..lookback {
-            let idx = (self.memory_index + self.memory.len() - 1 - i) % self.memory.len();
+            let idx = (self.memory_index + self.memory.len() - i - 1) % self.memory.len();
             if let Some(mem) = self.memory[idx] {
                 if mem.state == state {
                     count += 1;
@@ -97,6 +104,11 @@ impl Task {
             }
         }
         count
+    }
+
+    /// Returns true if the task's emotional state has been unstable recently
+    pub fn is_emotionally_unstable(&self, lookback: usize) -> bool {
+        self.count_recent_state(EmotionalState::Stressed, lookback) >= 2
     }
 }
 
@@ -155,7 +167,7 @@ impl SelfImprovingScheduler {
         }
     }
 
-    /// Multi-hop emotional propagation that considers recent emotional memory
+    /// Multi-hop propagation that respects recent emotional memory
     pub fn propagate_emotion_multi_hop(
         &self,
         source: &Task,
@@ -186,14 +198,16 @@ impl SelfImprovingScheduler {
                             continue;
                         }
 
-                        // Consider target's recent memory when deciding influence
-                        let resistance = if target.was_recently_stressed(2) { 0.5 } else { 1.0 };
+                        // Use emotional memory: recently stressed targets resist influence
+                        let resistance = if target.was_recently_stressed(2) || target.is_emotionally_unstable(3) {
+                            0.5
+                        } else {
+                            1.0
+                        };
 
                         let relationship = self.get_relationship_strength(source.id, target.id);
-                        let effective_influence = self.compute_effective_influence(base_influence, relationship);
-
-                        // Apply memory-based resistance
-                        let final_influence = (effective_influence as f32 * resistance) as i8;
+                        let effective = self.compute_effective_influence(base_influence, relationship);
+                        let final_influence = (effective as f32 * resistance) as i8;
 
                         if final_influence != 0 {
                             let new_state = self.compute_propagated_state(
@@ -204,8 +218,8 @@ impl SelfImprovingScheduler {
 
                             if new_state != target.emotional_state {
                                 println!(
-                                    "[Hop {}] Task {} influenced Task {} -> {:?} (memory resistance applied)",
-                                    hop, src_task.id, target.id, new_state
+                                    "[Hop {}] Emotional influence: Task {} -> Task {} ({:?} -> {:?})",
+                                    hop, src_task.id, target.id, target.emotional_state, new_state
                                 );
                                 target.emotional_state = new_state;
                                 target.record_emotion(new_state, self.time);
@@ -235,11 +249,16 @@ impl SelfImprovingScheduler {
             }
 
             let relationship = self.get_relationship_strength(source.id, target.id);
-            let effective_influence = self.compute_effective_influence(base_influence, relationship);
+            let effective = self.compute_effective_influence(base_influence, relationship);
 
-            // Apply resistance if target was recently stressed
-            let resistance = if target.was_recently_stressed(2) { 0.6 } else { 1.0 };
-            let final_influence = (effective_influence as f32 * resistance) as i8;
+            // Memory-based resistance
+            let resistance = if target.was_recently_stressed(2) || target.is_emotionally_unstable(3) {
+                0.55
+            } else {
+                1.0
+            };
+
+            let final_influence = (effective as f32 * resistance) as i8;
 
             if final_influence != 0 {
                 let new_state = self.compute_propagated_state(
@@ -304,6 +323,6 @@ impl SelfImprovingScheduler {
 }
 
 // TODO:
-// - Make get_relationship_strength use real RelationshipGraph
-// - Use full emotional memory history for smarter decisions
-// - Add emotional decay over time
+// - Replace placeholder relationship system with real RelationshipGraph
+// - Use full emotional memory (not just stress) for smarter resistance
+// - Add emotional decay / fading of old memories
