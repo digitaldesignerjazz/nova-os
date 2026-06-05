@@ -2,7 +2,6 @@
 
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 
-/// A virtual memory page
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Page {
     number: usize,
@@ -18,30 +17,26 @@ impl Page {
     }
 }
 
-/// Page table entry (simplified x86_64)
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct PageTableEntry(u64);
 
 impl PageTableEntry {
-    pub fn is_unused(&self) -> bool {
-        self.0 == 0
-    }
+    pub fn is_unused(&self) -> bool { self.0 == 0 }
 
     pub fn set_frame(&mut self, frame: Frame, flags: u64) {
         self.0 = (frame.start_address() as u64) | flags;
     }
 
     pub fn frame(&self) -> Option<Frame> {
-        if self.is_unused() {
-            None
-        } else {
+        if self.is_unused() { None } else {
             Some(Frame::containing_address((self.0 & 0x000f_ffff_ffff_f000) as usize))
         }
     }
 }
 
-/// Very basic 4-level page table structure (stub)
+/// A single page table (512 entries)
+#[repr(align(4096))]
 pub struct PageTable {
     entries: [PageTableEntry; 512],
 }
@@ -52,11 +47,15 @@ impl PageTable {
             *entry = PageTableEntry(0);
         }
     }
+
+    pub fn set_entry(&mut self, index: usize, entry: PageTableEntry) {
+        self.entries[index] = entry;
+    }
 }
 
-/// Basic paging manager
+/// Basic 4-level paging manager (early implementation)
 pub struct PagingManager {
-    // In real implementation: current CR3 + active page tables
+    // In a real kernel we would store the current PML4 physical address here
 }
 
 impl PagingManager {
@@ -64,21 +63,26 @@ impl PagingManager {
         PagingManager {}
     }
 
+    /// Map a single page (simplified - does not yet create intermediate tables)
     pub fn map_page<A: FrameAllocator>(
         &mut self,
-        _page: Page,
-        _frame: Frame,
-        _flags: u64,
+        page: Page,
+        frame: Frame,
+        flags: u64,
         _allocator: &mut A,
     ) -> Result<(), &'static str> {
-        // TODO: Walk/create page tables and set entry
-        println!("[PAGING] map_page called (not fully implemented yet)");
+        // TODO: Walk the 4-level page tables and create missing ones
+        // For now we just print what we would do
+        println!(
+            "[PAGING] Mapping virtual page {} -> physical frame {}",
+            page.number, frame.number()
+        );
         Ok(())
     }
 }
 
-// TODO:
-// - Implement full 4-level page table walking + creation
-// - Add page fault handler
-// - Support higher-half kernel mapping
-// - Identity map low memory + kernel
+// TODO (Real implementation needed):
+// - Add function to get/create Page Table at each level (PML4, PDPT, PD, PT)
+// - Allocate frames for new page tables using the frame allocator
+// - Implement proper page table walking
+// - Add support for huge pages (2MiB / 1GiB)
