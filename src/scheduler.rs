@@ -1,24 +1,19 @@
 /// Self-Improving Scheduler for Nova OS
 ///
-/// This is the core of Nova OS's self-improving nature.
-/// It will eventually:
-/// - Collect feedback from mesh, hardware, and swarm behavior
-/// - Adapt scheduling decisions over time
-/// - Prioritize emotional swarm tasks intelligently
+/// Core of the self-improving and emotional aspects of the OS.
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-/// Basic task representation (will be expanded)
 #[derive(Debug, Clone, Copy)]
 pub struct Task {
     pub id: u64,
     pub priority: u8,
+    // TODO: Add emotional state, deadline, resource requirements, etc.
 }
 
-/// Very early self-improving scheduler skeleton
 pub struct SelfImprovingScheduler {
     next_task_id: AtomicU64,
-    // TODO: Add feedback collection, learning structures, etc.
+    // Future: feedback history, learning model, etc.
 }
 
 impl SelfImprovingScheduler {
@@ -33,14 +28,23 @@ impl SelfImprovingScheduler {
         Task { id, priority }
     }
 
-    /// In the future this will use collected feedback to adjust priorities
+    /// Current simple priority scheduling.
+    /// Future versions will adapt based on:
+    /// - Mesh feedback from Nova 10.0 / Solnet
+    /// - Emotional swarm state from Nexus
+    /// - Hardware sensor data
     pub fn schedule(&self, tasks: &mut [Task]) {
-        // Currently just sorts by priority (placeholder)
         tasks.sort_by_key(|t| core::cmp::Reverse(t.priority));
+    }
+
+    /// Placeholder for future self-improvement logic
+    pub fn collect_feedback(&mut self, task_id: u64, success: bool, latency: u64) {
+        // TODO: Update internal model for better future scheduling
+        println!("Feedback collected for task {}: success={}, latency={}", task_id, success, latency);
     }
 }
 
 // TODO:
-// - Integrate with emotional swarm runtime
-// - Add feedback loop from Nova 10.0 / Solnet / hardware
-// - Implement actual adaptive / learning behavior
+// - Integrate emotional state from Nexus / Lyra concepts
+// - Add real adaptive / ML-based scheduling
+// - Connect to frame allocator and paging for task memory
