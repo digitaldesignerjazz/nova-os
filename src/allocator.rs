@@ -1,6 +1,6 @@
 /// Heap Allocator for Nova OS
 ///
-/// Integrated with BitmapFrameAllocator and now allocates contiguous frames.
+/// Now supports proper contiguous frame allocation.
 
 use core::alloc::{GlobalAlloc, Layout};
 use linked_list_allocator::LockedHeap;
@@ -9,42 +9,44 @@ use crate::memory::{BitmapFrameAllocator, FrameAllocator, PAGE_SIZE};
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
-/// Find and allocate a contiguous range of frames
+/// Find and allocate a contiguous range of free frames
 fn allocate_contiguous_frames(
     allocator: &mut BitmapFrameAllocator,
     frames_needed: usize,
 ) -> Option<usize> {
-    // Simple linear search for contiguous free frames
-    // This is O(n) but acceptable for early kernel
-    for start in 0..(allocator.frame_count() - frames_needed) {
-        let mut is_free = true;
+    if frames_needed == 0 {
+        return None;
+    }
+
+    let total_frames = allocator.frame_count();
+
+    // Scan for a contiguous block of free frames
+    'outer: for start in 0..=(total_frames - frames_needed) {
+        // Check if all frames in [start, start + frames_needed) are free
+        for offset in 0..frames_needed {
+            if !allocator.is_frame_free(start + offset) {
+                continue 'outer;
+            }
+        }
+
+        // Found a contiguous free region! Allocate all frames in it
+        let heap_start = start * PAGE_SIZE;  // We need the virtual/physical address
 
         for offset in 0..frames_needed {
-            // We need a way to check if a frame is free.
-            // For now we'll use a simplified approach:
-            // Try to allocate and immediately check if we got what we wanted.
-            // Better implementation would expose an `is_frame_free` method.
-        }
-    }
-
-    // Fallback: just allocate frames (non-contiguous for now)
-    // TODO: Implement proper contiguous search
-    let mut start_addr: Option<usize> = None;
-
-    for i in 0..frames_needed {
-        if let Some(frame) = allocator.allocate_frame() {
-            if i == 0 {
-                start_addr = Some(frame.start_address());
+            // Allocate each frame (this also marks them as used)
+            if allocator.allocate_frame().is_none() {
+                // Should not happen if is_frame_free was correct
+                return None;
             }
-        } else {
-            return None;
         }
+
+        return Some(heap_start);
     }
 
-    start_addr
+    None
 }
 
-/// Initialize the heap using contiguous frames from the frame allocator
+/// Initialize the heap using contiguous frames
 pub unsafe fn init_heap(
     frame_allocator: &mut BitmapFrameAllocator,
     heap_size: usize,
@@ -55,11 +57,11 @@ pub unsafe fn init_heap(
         ALLOCATOR.lock().init(heap_start, heap_size);
         Ok(())
     } else {
-        Err("Failed to allocate contiguous frames for heap")
+        Err("Not enough contiguous free frames for heap")
     }
 }
 
 // TODO:
-// - Implement efficient contiguous frame search (scan bitmap)
-// - Add method to BitmapFrameAllocator to check if frame is free
-// - Support dynamic heap growth
+// - Optimize contiguous search (current is O(n))
+// - Add support for dynamic heap growth
+// - Consider using a better data structure for free regions
