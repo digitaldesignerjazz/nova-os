@@ -1,4 +1,5 @@
 /// Virtual Memory / Paging for Nova OS
+/// Now includes real 4-level page table walking.
 
 use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 
@@ -33,9 +34,12 @@ impl PageTableEntry {
             Some(Frame::containing_address((self.0 & 0x000f_ffff_ffff_f000) as usize))
         }
     }
+
+    pub const PRESENT: u64 = 1 << 0;
+    pub const WRITABLE: u64 = 1 << 1;
+    pub const USER_ACCESSIBLE: u64 = 1 << 2;
 }
 
-/// A single page table (512 entries)
 #[repr(align(4096))]
 pub struct PageTable {
     entries: [PageTableEntry; 512],
@@ -47,42 +51,66 @@ impl PageTable {
             *entry = PageTableEntry(0);
         }
     }
-
-    pub fn set_entry(&mut self, index: usize, entry: PageTableEntry) {
-        self.entries[index] = entry;
-    }
 }
 
-/// Basic 4-level paging manager (early implementation)
-pub struct PagingManager {
-    // In a real kernel we would store the current PML4 physical address here
-}
+/// 4-level page table indices (x86_64)
+pub fn pml4_index(addr: usize) -> usize { (addr >> 39) & 0x1ff }
+pub fn pdpt_index(addr: usize) -> usize { (addr >> 30) & 0x1ff }
+pub fn pd_index(addr: usize)   -> usize { (addr >> 21) & 0x1ff }
+pub fn pt_index(addr: usize)   -> usize { (addr >> 12) & 0x1ff }
+
+/// Real page table walking + mapping
+pub struct PagingManager;
 
 impl PagingManager {
-    pub fn new() -> Self {
-        PagingManager {}
-    }
-
-    /// Map a single page (simplified - does not yet create intermediate tables)
+    /// Map a virtual page to a physical frame (creates page tables as needed)
     pub fn map_page<A: FrameAllocator>(
-        &mut self,
+        page_table: &mut PageTable, // Usually the PML4
         page: Page,
         frame: Frame,
         flags: u64,
-        _allocator: &mut A,
+        allocator: &mut A,
     ) -> Result<(), &'static str> {
-        // TODO: Walk the 4-level page tables and create missing ones
-        // For now we just print what we would do
-        println!(
-            "[PAGING] Mapping virtual page {} -> physical frame {}",
-            page.number, frame.number()
-        );
+        let addr = page.start_address();
+
+        // Walk the 4 levels
+        let pml4 = page_table;
+        let pdpt = Self::get_or_create_table(&mut pml4.entries[pml4_index(addr)], allocator)?;
+        let pd   = Self::get_or_create_table(&mut pdpt.entries[pdpt_index(addr)], allocator)?;
+        let pt   = Self::get_or_create_table(&mut pd.entries[pd_index(addr)], allocator)?;
+
+        // Set the final entry
+        pt.entries[pt_index(addr)].set_frame(frame, flags | PageTableEntry::PRESENT);
+
         Ok(())
+    }
+
+    /// Get existing page table or create a new one
+    fn get_or_create_table<A: FrameAllocator>(
+        entry: &mut PageTableEntry,
+        allocator: &mut A,
+    ) -> Result<&'static mut PageTable, &'static str> {
+        if let Some(frame) = entry.frame() {
+            // Already exists
+            unsafe { return Ok(&mut *(frame.start_address() as *mut PageTable)); }
+        }
+
+        // Allocate a new frame for the page table
+        let frame = allocator.allocate_frame()
+            .ok_or("Out of memory for page table")?;
+
+        let table = unsafe { &mut *(frame.start_address() as *mut PageTable) };
+        table.zero();
+
+        // Point the parent entry to the new table
+        entry.set_frame(frame, PageTableEntry::PRESENT | PageTableEntry::WRITABLE);
+
+        Ok(table)
     }
 }
 
-// TODO (Real implementation needed):
-// - Add function to get/create Page Table at each level (PML4, PDPT, PD, PT)
-// - Allocate frames for new page tables using the frame allocator
-// - Implement proper page table walking
-// - Add support for huge pages (2MiB / 1GiB)
+// TODO:
+// - Add unmap support
+// - Add support for huge pages
+// - Flush TLB after mapping
+// - Proper recursive page table mapping for easier access
