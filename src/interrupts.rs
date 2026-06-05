@@ -1,24 +1,37 @@
-/// Interrupt handling for Nova OS (early stage)
+/// Interrupt handling for Nova OS
 
-use core::panic::PanicInfo;
+use x86_64::structures::idt::{InterruptDescriptorTable, PageFaultErrorCode};
+use x86_64::VirtAddr;
 
-/// Basic page fault handler
-///
-/// This will be called when a page fault occurs.
-/// For now it just prints information and halts.
-pub fn page_fault_handler(
-    faulting_address: usize,
-    error_code: u64,
-) -> ! {
+use crate::println;
+
+static mut IDT: InterruptDescriptorTable = InterruptDescriptorTable::new();
+
+/// Initialize and load the Interrupt Descriptor Table
+pub fn init_idt() {
+    unsafe {
+        IDT.page_fault.set_handler_fn(page_fault_handler);
+
+        // Load the IDT
+        IDT.load();
+    }
+    println!("IDT initialized with page fault handler");
+}
+
+/// Page fault handler
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: x86_64::structures::idt::InterruptStackFrame,
+    _error_code: PageFaultErrorCode,
+) {
     println!("\n!!! PAGE FAULT !!!");
-    println!("  Faulting address: {:#x}", faulting_address);
-    println!("  Error code: {:#x}", error_code);
-    println!("  Kernel halting...");
+    println!("  Instruction pointer: {:#x}", stack_frame.instruction_pointer.as_u64());
+    println!("  Faulting address:    {:#x}", x86_64::registers::control::Cr2::read().as_u64());
+    println!("Kernel halting...");
 
     loop {}
 }
 
 // TODO:
-// - Register this handler in the IDT (Interrupt Descriptor Table)
-// - Handle different types of page faults (present, write, user, etc.)
-// - Possibly kill the offending task instead of halting
+// - Add handlers for other exceptions (double fault, general protection, etc.)
+// - Set up proper TSS and interrupt stack
+// - Handle page faults by mapping memory or killing tasks
