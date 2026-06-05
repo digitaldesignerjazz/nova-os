@@ -107,23 +107,47 @@ impl Task {
         self.count_recent_state(EmotionalState::Stressed, lookback) >= 2
     }
 
-    /// Returns a resistance factor (0.0 - 1.0) based on recent emotional memory.
-    /// Higher stress count = higher resistance to emotional influence.
+    /// Returns a dynamic resistance factor based on recent emotional memory.
+    ///
+    /// - Recent stress increases resistance (harder to influence)
+    /// - Recent positive states (Focused, Loyal, etc.) decrease resistance (more receptive)
     pub fn emotional_resistance(&self) -> f32 {
         let stress_count = self.count_recent_state(EmotionalState::Stressed, 3);
+        let positive_count = self.count_recent_positive_states(3);
 
-        match stress_count {
+        // Base resistance from stress
+        let stress_resistance = match stress_count {
             0 => 1.0,
-            1 => 0.75,
-            2 => 0.55,
-            _ => 0.35, // Very resistant if stressed 3+ times recently
+            1 => 0.8,
+            2 => 0.6,
+            _ => 0.4,
+        };
+
+        // Positive states make the agent more receptive (lower resistance)
+        let positive_factor = 1.0 - (positive_count as f32 * 0.12).min(0.45);
+
+        (stress_resistance * positive_factor).clamp(0.25, 1.2)
+    }
+
+    /// Count recent positive emotional states (Focused, Loyal, Excited, Content)
+    fn count_recent_positive_states(&self, lookback: usize) -> usize {
+        let lookback = lookback.min(self.memory.len());
+        let mut count = 0;
+        for i in 1..=lookback {
+            let idx = self.prev_index(i);
+            if let Some(mem) = self.memory[idx] {
+                if mem.state.is_positive() {
+                    count += 1;
+                }
+            }
         }
+        count
     }
 
     /// Helper: get index `steps` positions before the current write position
     #[inline]
     fn prev_index(&self, steps: usize) -> usize {
-        (self.memory_index + self.memory.len() - steps) % self.memory.len()
+        (self.memory_index + self.memory.len() - steps) % self.memory.len();
     }
 }
 
@@ -216,7 +240,7 @@ impl SelfImprovingScheduler {
                         let relationship = self.get_relationship_strength(source.id, target.id);
                         let effective = self.compute_effective_influence(base_influence, relationship);
 
-                        // Dynamic resistance based on emotional memory
+                        // Dynamic resistance from emotional memory
                         let resistance = target.emotional_resistance();
                         let final_influence = (effective as f32 * resistance) as i8;
 
@@ -262,7 +286,7 @@ impl SelfImprovingScheduler {
             let relationship = self.get_relationship_strength(source.id, target.id);
             let effective = self.compute_effective_influence(base_influence, relationship);
 
-            // Dynamic resistance based on emotional memory
+            // Dynamic resistance from emotional memory
             let resistance = target.emotional_resistance();
             let final_influence = (effective as f32 * resistance) as i8;
 
@@ -330,5 +354,5 @@ impl SelfImprovingScheduler {
 
 // TODO:
 // - Replace placeholder relationship system with real RelationshipGraph
-// - Make emotional_resistance consider more memory factors (e.g. recent positive states)
-// - Add emotional decay over time
+// - Make emotional_resistance consider more factors (e.g. relationship history)
+// - Add emotional decay
