@@ -7,9 +7,13 @@ use uart_16550::SerialPort;
 
 mod memory;
 mod allocator;
+mod paging;
+mod interrupts;
 
 use memory::{BitmapFrameAllocator, FrameAllocator, Frame, PAGE_SIZE};
 use allocator::init_heap;
+use paging::{PagingManager, Page, PageTable, PageTableEntry};
+use interrupts::init_idt;
 
 static mut SERIAL: Option<SerialPort> = None;
 
@@ -73,28 +77,49 @@ pub extern "C" fn _start() -> ! {
     println!("========================================");
     println!();
 
+    // === Frame Allocator ===
     let mut frame_allocator = init_frame_allocator();
 
-    // Test frame allocation
-    if let Some(frame) = frame_allocator.allocate_frame() {
-        println!("Allocated test frame #{}", frame.number());
-    }
+    // === IDT (Page Fault Handler) ===
+    init_idt();
 
-    // === Heap Allocator (now using frame allocator) ===
+    // === Heap ===
     unsafe {
-        let heap_size = 1024 * 1024; // 1 MiB
-        match init_heap(&mut frame_allocator, heap_size) {
-            Ok(()) => println!("Heap initialized using frame allocator ({} bytes)", heap_size),
-            Err(e) => println!("Heap init failed: {}", e),
+        let heap_size = 1024 * 1024;
+        if init_heap(&mut frame_allocator, heap_size).is_ok() {
+            println!("Heap initialized successfully");
         }
     }
 
-    // Test heap allocation
-    let boxed = alloc::boxed::Box::new(42u32);
-    println!("Heap test: boxed = {}", *boxed);
+    // === Test Paging ===
+    println!("\nTesting 4-level page table mapping...");
 
-    println!();
-    println!("Frame + Heap integration working!");
+    // Create a page table (we'll use a simple one for testing)
+    // In a real kernel we would have a proper PML4
+    static mut TEST_PAGE_TABLE: PageTable = PageTable { entries: [PageTableEntry(0); 512] };
+
+    unsafe {
+        TEST_PAGE_TABLE.zero();
+
+        let virtual_page = Page::containing_address(0x4000_0000); // Example virtual address
+        if let Some(frame) = frame_allocator.allocate_frame() {
+            let flags = PageTableEntry::PRESENT | PageTableEntry::WRITABLE;
+
+            match PagingManager::map_page(
+                &mut TEST_PAGE_TABLE,
+                virtual_page,
+                frame,
+                flags,
+                &mut frame_allocator,
+            ) {
+                Ok(()) => println!("  Successfully mapped virtual page to frame {}", frame.number()),
+                Err(e) => println!("  Mapping failed: {}", e),
+            }
+        }
+    }
+
+    println!("\nPaging test complete!");
+    println!("Next: Full bootloader integration + higher-half kernel");
 
     loop {}
 }
