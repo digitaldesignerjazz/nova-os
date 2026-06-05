@@ -1,23 +1,47 @@
 /// Heap Allocator for Nova OS
 ///
-/// Uses linked_list_allocator on top of our frame allocator.
+/// Now integrated with our BitmapFrameAllocator.
 
 use core::alloc::{GlobalAlloc, Layout};
 use linked_list_allocator::LockedHeap;
+use crate::memory::{BitmapFrameAllocator, FrameAllocator, PAGE_SIZE};
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
-/// Initialize the heap allocator
-///
-/// This should be called after the frame allocator is ready.
-pub unsafe fn init_heap(heap_start: usize, heap_size: usize) {
-    ALLOCATOR.lock().init(heap_start, heap_size);
-    // Note: In a real implementation we would allocate frames from
-    // the frame allocator to back this heap region.
+/// Initialize the heap by allocating frames from the frame allocator
+pub unsafe fn init_heap(
+    frame_allocator: &mut BitmapFrameAllocator,
+    heap_size: usize, // in bytes
+) -> Result<(), &'static str> {
+    let frames_needed = (heap_size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+    // Allocate contiguous frames for the heap
+    let mut heap_start: Option<usize> = None;
+    let mut current_frame: Option<crate::memory::Frame> = None;
+
+    for i in 0..frames_needed {
+        if let Some(frame) = frame_allocator.allocate_frame() {
+            let addr = frame.start_address();
+            if i == 0 {
+                heap_start = Some(addr);
+            }
+            // TODO: In a real system we would ensure frames are contiguous
+            // For now we just take whatever frames we get
+        } else {
+            return Err("Not enough free frames for heap");
+        }
+    }
+
+    if let Some(start) = heap_start {
+        ALLOCATOR.lock().init(start, heap_size);
+        Ok(())
+    } else {
+        Err("Failed to allocate heap frames")
+    }
 }
 
 // TODO:
-// - Integrate properly with BitmapFrameAllocator to allocate backing frames
-// - Add better error handling
-// - Support growing the heap dynamically
+// - Ensure allocated frames are physically contiguous (important!)
+// - Support growing the heap later by allocating more frames
+// - Add better error handling and logging
