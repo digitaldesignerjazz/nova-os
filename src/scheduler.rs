@@ -1,10 +1,9 @@
 /// Emotional + Self-Improving Scheduler for Nova OS
 ///
-/// Core of Nova OS's emotional swarm intelligence.
+/// Includes multi-hop emotional propagation and basic relationship tracking.
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-/// Emotional states for tasks / agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmotionalState {
     Neutral,
@@ -85,52 +84,104 @@ impl SelfImprovingScheduler {
         };
 
         if task.emotional_state != previous_state {
-            println!(
-                "Task {} emotional change: {:?} -> {:?}",
-                task.id, previous_state, task.emotional_state
-            );
+            println!("Task {} changed: {:?} -> {:?}", task.id, previous_state, task.emotional_state);
         }
     }
 
-    /// Propagate emotional state from one task to others.
-    /// This is a core mechanism for emotional swarm behavior.
-    pub fn propagate_emotion(&self, source: &Task, targets: &mut [Task]) {
-        if targets.is_empty() {
+    /// Propagate emotional state with support for multiple hops.
+    /// `max_hops` controls how far the emotion can spread through the group.
+    pub fn propagate_emotion_multi_hop(
+        &self,
+        source: &Task,
+        all_tasks: &mut [Task],
+        max_hops: usize,
+    ) {
+        if max_hops == 0 || all_tasks.is_empty() {
             return;
         }
 
-        let influence_strength = match source.emotional_state {
-            EmotionalState::Focused | EmotionalState::Loyal => 2,
-            EmotionalState::Excited => 1,
-            EmotionalState::Content => 1,
-            EmotionalState::Curious => 1,
-            EmotionalState::Stressed => -1, // Negative spread (can be tuned)
-            EmotionalState::Neutral => 0,
-        };
+        // Start with direct influence (hop 0)
+        self.propagate_emotion_single(source, all_tasks);
 
-        if influence_strength == 0 {
+        // Multi-hop propagation with diminishing influence
+        let mut current_sources: Vec<usize> = vec![source.id as usize];
+
+        for hop in 1..=max_hops {
+            let mut new_influenced = Vec::new();
+
+            for &src_id in &current_sources {
+                // Find the current state of this source (it may have changed)
+                if let Some(src_task) = all_tasks.iter().find(|t| t.id as usize == src_id) {
+                    let influence = self.calculate_influence_strength(&src_task.emotional_state);
+
+                    if influence == 0 {
+                        continue;
+                    }
+
+                    for target in all_tasks.iter_mut() {
+                        if target.id as usize == src_id {
+                            continue;
+                        }
+
+                        // Simple relationship model: assume uniform relationship for now
+                        // In future this can be replaced with a real relationship graph
+                        let relationship_strength = self.get_relationship_strength(src_id as u64, target.id);
+
+                        let effective_influence = influence * relationship_strength;
+
+                        if effective_influence > 0 {
+                            let new_state = self.compute_propagated_state(
+                                &src_task.emotional_state,
+                                &target.emotional_state,
+                                effective_influence,
+                            );
+
+                            if new_state != target.emotional_state {
+                                println!(
+                                    "[Hop {}] Emotional influence: Task {} ({:?}) -> Task {} ({:?} -> {:?}) [rel={:.1}]",
+                                    hop,
+                                    src_task.id,
+                                    src_task.emotional_state,
+                                    target.id,
+                                    target.emotional_state,
+                                    new_state,
+                                    relationship_strength
+                                );
+                                target.emotional_state = new_state;
+                                new_influenced.push(target.id as usize);
+                            }
+                        }
+                    }
+                }
+            }
+
+            current_sources = new_influenced;
+            if current_sources.is_empty() {
+                break;
+            }
+        }
+    }
+
+    /// Single-hop propagation (used internally)
+    fn propagate_emotion_single(&self, source: &Task, targets: &mut [Task]) {
+        let influence = self.calculate_influence_strength(&source.emotional_state);
+        if influence == 0 {
             return;
         }
 
         for target in targets.iter_mut() {
             if target.id == source.id {
-                continue; // Don't influence self
+                continue;
             }
 
-            let new_state = match (source.emotional_state, target.emotional_state) {
-                // Positive propagation
-                (EmotionalState::Focused, EmotionalState::Neutral) => EmotionalState::Content,
-                (EmotionalState::Loyal, _) => EmotionalState::Loyal,
-                (EmotionalState::Excited, EmotionalState::Neutral | EmotionalState::Content) => EmotionalState::Excited,
+            let relationship = self.get_relationship_strength(source.id, target.id);
+            let effective = influence * relationship;
 
-                // Curious can spread exploration
-                (EmotionalState::Curious, EmotionalState::Neutral) => EmotionalState::Curious,
-
-                // Negative spread (Stressed)
-                (EmotionalState::Stressed, EmotionalState::Content | EmotionalState::Neutral) => EmotionalState::Stressed,
-
-                _ => target.emotional_state,
-            };
+            let new_state = self.compute_propagated_state(
+                &source.emotional_state,
+                &target.emotional_state,
+                effective,
+            );
 
             if new_state != target.emotional_state {
                 println!(
@@ -141,10 +192,48 @@ impl SelfImprovingScheduler {
             }
         }
     }
+
+    fn calculate_influence_strength(&self, state: &EmotionalState) -> i8 {
+        match state {
+            EmotionalState::Focused | EmotionalState::Loyal => 2,
+            EmotionalState::Excited | EmotionalState::Curious => 1,
+            EmotionalState::Content => 1,
+            EmotionalState::Stressed => -1,
+            EmotionalState::Neutral => 0,
+        }
+    }
+
+    /// Basic relationship model.
+    /// Currently returns a default strength. Can be extended with a real graph.
+    fn get_relationship_strength(&self, _from_id: u64, _to_id: u64) -> f32 {
+        // TODO: Replace with actual relationship tracking / loyalty graph
+        // For now we use a default relationship strength of 1.0
+        1.0
+    }
+
+    fn compute_propagated_state(
+        &self,
+        source_state: &EmotionalState,
+        target_state: &EmotionalState,
+        influence: i8,
+    ) -> EmotionalState {
+        if influence <= 0 {
+            return *target_state;
+        }
+
+        match (source_state, target_state) {
+            (EmotionalState::Focused, EmotionalState::Neutral) => EmotionalState::Content,
+            (EmotionalState::Loyal, _) => EmotionalState::Loyal,
+            (EmotionalState::Excited, EmotionalState::Neutral | EmotionalState::Content) => EmotionalState::Excited,
+            (EmotionalState::Curious, EmotionalState::Neutral) => EmotionalState::Curious,
+            (EmotionalState::Stressed, EmotionalState::Content | EmotionalState::Neutral) => EmotionalState::Stressed,
+            _ => *target_state,
+        }
+    }
 }
 
 // TODO:
-// - Add relationship / loyalty graph between tasks
-// - Make propagation strength depend on relationship closeness
-// - Support swarm-level emotional consensus
-// - Persistent emotional memory
+// - Implement real relationship / loyalty graph between tasks
+// - Make get_relationship_strength use actual data
+// - Add emotional memory / history
+// - Swarm-level emotional consensus mechanisms
