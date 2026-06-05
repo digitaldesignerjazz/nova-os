@@ -33,21 +33,43 @@ impl EmotionalState {
     }
 }
 
+/// Simple emotional memory entry
+#[derive(Debug, Clone, Copy)]
+pub struct EmotionalMemory {
+    pub state: EmotionalState,
+    pub timestamp: u64, // Simple counter for now
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Task {
     pub id: u64,
     pub priority: u8,
     pub emotional_state: EmotionalState,
+    pub memory: [Option<EmotionalMemory>; 4], // Small emotional history
+    pub memory_index: usize,
+}
+
+impl Task {
+    pub fn record_emotion(&mut self, state: EmotionalState, time: u64) {
+        self.memory[self.memory_index] = Some(EmotionalMemory { state, timestamp: time });
+        self.memory_index = (self.memory_index + 1) % self.memory.len();
+    }
+
+    pub fn get_recent_emotions(&self) -> [Option<EmotionalMemory>; 4] {
+        self.memory
+    }
 }
 
 pub struct SelfImprovingScheduler {
     next_task_id: AtomicU64,
+    time: u64,
 }
 
 impl SelfImprovingScheduler {
     pub const fn new() -> Self {
         SelfImprovingScheduler {
             next_task_id: AtomicU64::new(0),
+            time: 0,
         }
     }
 
@@ -57,6 +79,8 @@ impl SelfImprovingScheduler {
             id,
             priority: base_priority,
             emotional_state: EmotionalState::Neutral,
+            memory: [None; 4],
+            memory_index: 0,
         }
     }
 
@@ -83,13 +107,16 @@ impl SelfImprovingScheduler {
             _ => task.emotional_state,
         };
 
+        // Record in emotional memory
+        task.record_emotion(task.emotional_state, self.time);
+        self.time += 1;
+
         if task.emotional_state != previous_state {
             println!("Task {} changed: {:?} -> {:?}", task.id, previous_state, task.emotional_state);
         }
     }
 
-    /// Propagate emotional state with support for multiple hops.
-    /// `max_hops` controls how far the emotion can spread through the group.
+    /// Multi-hop emotional propagation with relationship awareness
     pub fn propagate_emotion_multi_hop(
         &self,
         source: &Task,
@@ -100,17 +127,14 @@ impl SelfImprovingScheduler {
             return;
         }
 
-        // Start with direct influence (hop 0)
         self.propagate_emotion_single(source, all_tasks);
 
-        // Multi-hop propagation with diminishing influence
         let mut current_sources: Vec<usize> = vec![source.id as usize];
 
         for hop in 1..=max_hops {
             let mut new_influenced = Vec::new();
 
             for &src_id in &current_sources {
-                // Find the current state of this source (it may have changed)
                 if let Some(src_task) = all_tasks.iter().find(|t| t.id as usize == src_id) {
                     let influence = self.calculate_influence_strength(&src_task.emotional_state);
 
@@ -123,11 +147,8 @@ impl SelfImprovingScheduler {
                             continue;
                         }
 
-                        // Simple relationship model: assume uniform relationship for now
-                        // In future this can be replaced with a real relationship graph
-                        let relationship_strength = self.get_relationship_strength(src_id as u64, target.id);
-
-                        let effective_influence = influence * relationship_strength;
+                        let relationship = self.get_relationship_strength(source.id, target.id);
+                        let effective_influence = (influence as f32 * relationship) as i8;
 
                         if effective_influence > 0 {
                             let new_state = self.compute_propagated_state(
@@ -138,16 +159,12 @@ impl SelfImprovingScheduler {
 
                             if new_state != target.emotional_state {
                                 println!(
-                                    "[Hop {}] Emotional influence: Task {} ({:?}) -> Task {} ({:?} -> {:?}) [rel={:.1}]",
-                                    hop,
-                                    src_task.id,
-                                    src_task.emotional_state,
-                                    target.id,
-                                    target.emotional_state,
-                                    new_state,
-                                    relationship_strength
+                                    "[Hop {}] Task {} ({:?}) influenced Task {} -> {:?} (rel={:.1})",
+                                    hop, src_task.id, src_task.emotional_state,
+                                    target.id, new_state, relationship
                                 );
                                 target.emotional_state = new_state;
+                                target.record_emotion(new_state, self.time);
                                 new_influenced.push(target.id as usize);
                             }
                         }
@@ -162,7 +179,6 @@ impl SelfImprovingScheduler {
         }
     }
 
-    /// Single-hop propagation (used internally)
     fn propagate_emotion_single(&self, source: &Task, targets: &mut [Task]) {
         let influence = self.calculate_influence_strength(&source.emotional_state);
         if influence == 0 {
@@ -175,7 +191,7 @@ impl SelfImprovingScheduler {
             }
 
             let relationship = self.get_relationship_strength(source.id, target.id);
-            let effective = influence * relationship;
+            let effective = (influence as f32 * relationship) as i8;
 
             let new_state = self.compute_propagated_state(
                 &source.emotional_state,
@@ -189,6 +205,7 @@ impl SelfImprovingScheduler {
                     source.id, source.emotional_state, target.id, new_state
                 );
                 target.emotional_state = new_state;
+                target.record_emotion(new_state, self.time);
             }
         }
     }
@@ -203,12 +220,10 @@ impl SelfImprovingScheduler {
         }
     }
 
-    /// Basic relationship model.
-    /// Currently returns a default strength. Can be extended with a real graph.
+    /// Relationship model - currently uniform.
+    /// TODO: Replace with real loyalty/relationship graph.
     fn get_relationship_strength(&self, _from_id: u64, _to_id: u64) -> f32 {
-        // TODO: Replace with actual relationship tracking / loyalty graph
-        // For now we use a default relationship strength of 1.0
-        1.0
+        1.0 // Default relationship strength
     }
 
     fn compute_propagated_state(
@@ -233,7 +248,6 @@ impl SelfImprovingScheduler {
 }
 
 // TODO:
-// - Implement real relationship / loyalty graph between tasks
-// - Make get_relationship_strength use actual data
-// - Add emotional memory / history
-// - Swarm-level emotional consensus mechanisms
+// - Real relationship/loyalty graph
+// - Dynamic relationship strength based on history
+// - Emotional memory queries
