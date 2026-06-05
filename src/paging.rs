@@ -1,14 +1,8 @@
 /// Virtual Memory / Paging for Nova OS
-///
-/// This will become the virtual memory subsystem.
-/// It sits on top of the physical frame allocator.
 
-use crate::memory::{Frame, FrameAllocator};
+use crate::memory::{Frame, FrameAllocator, PAGE_SIZE};
 
-/// Page size (4 KiB on x86_64)
-pub const PAGE_SIZE: usize = 4096;
-
-/// Represents a virtual page
+/// A virtual memory page
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Page {
     number: usize,
@@ -18,22 +12,51 @@ impl Page {
     pub fn containing_address(address: usize) -> Self {
         Page { number: address / PAGE_SIZE }
     }
+
+    pub fn start_address(&self) -> usize {
+        self.number * PAGE_SIZE
+    }
 }
 
-/// Page table entry flags (simplified)
+/// Page table entry (simplified x86_64)
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
-pub struct PageTableFlags {
-    pub present: bool,
-    pub writable: bool,
-    pub user_accessible: bool,
-    // Add more flags as needed (no_execute, etc.)
+pub struct PageTableEntry(u64);
+
+impl PageTableEntry {
+    pub fn is_unused(&self) -> bool {
+        self.0 == 0
+    }
+
+    pub fn set_frame(&mut self, frame: Frame, flags: u64) {
+        self.0 = (frame.start_address() as u64) | flags;
+    }
+
+    pub fn frame(&self) -> Option<Frame> {
+        if self.is_unused() {
+            None
+        } else {
+            Some(Frame::containing_address((self.0 & 0x000f_ffff_ffff_f000) as usize))
+        }
+    }
 }
 
-/// Very early paging manager skeleton
+/// Very basic 4-level page table structure (stub)
+pub struct PageTable {
+    entries: [PageTableEntry; 512],
+}
+
+impl PageTable {
+    pub fn zero(&mut self) {
+        for entry in self.entries.iter_mut() {
+            *entry = PageTableEntry(0);
+        }
+    }
+}
+
+/// Basic paging manager
 pub struct PagingManager {
-    // In a real implementation this would hold:
-    // - Pointer to current page table (CR3 on x86_64)
-    // - Frame allocator reference
+    // In real implementation: current CR3 + active page tables
 }
 
 impl PagingManager {
@@ -41,29 +64,21 @@ impl PagingManager {
         PagingManager {}
     }
 
-    /// Map a virtual page to a physical frame
     pub fn map_page<A: FrameAllocator>(
         &mut self,
-        page: Page,
-        frame: Frame,
-        flags: PageTableFlags,
-        frame_allocator: &mut A,
+        _page: Page,
+        _frame: Frame,
+        _flags: u64,
+        _allocator: &mut A,
     ) -> Result<(), &'static str> {
-        // TODO: Actual page table manipulation
-        println!("TODO: Map virtual page {} to frame {}", page.number, frame.number());
+        // TODO: Walk/create page tables and set entry
+        println!("[PAGING] map_page called (not fully implemented yet)");
         Ok(())
-    }
-
-    /// Unmap a virtual page
-    pub fn unmap_page(&mut self, page: Page) -> Result<Frame, &'static str> {
-        // TODO
-        println!("TODO: Unmap virtual page {}", page.number);
-        Err("not implemented")
     }
 }
 
-// TODO (Major next milestone):
-// - Implement actual 4-level page tables for x86_64
+// TODO:
+// - Implement full 4-level page table walking + creation
 // - Add page fault handler
-// - Support identity mapping + higher-half kernel
-// - Integrate with frame allocator for page table allocation
+// - Support higher-half kernel mapping
+// - Identity map low memory + kernel
