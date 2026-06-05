@@ -14,6 +14,7 @@ map-physical-memory = true
 bootloader = { version = "0.11", features = ["map_physical_memory"] }
 uart_16550 = "0.3"
 linked_list_allocator = "0.10"
+x86_64 = "0.15"
 
 [profile.dev]
 panic = "abort"
