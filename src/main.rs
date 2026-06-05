@@ -9,11 +9,13 @@ mod memory;
 mod allocator;
 mod paging;
 mod interrupts;
+mod scheduler;
 
 use memory::{BitmapFrameAllocator, FrameAllocator, Frame, PAGE_SIZE};
 use allocator::init_heap;
 use paging::{PagingManager, Page, PageTable, PageTableEntry};
 use interrupts::init_idt;
+use scheduler::{SelfImprovingScheduler, EmotionalState};
 
 static mut SERIAL: Option<SerialPort> = None;
 
@@ -77,49 +79,44 @@ pub extern "C" fn _start() -> ! {
     println!("========================================");
     println!();
 
-    // === Frame Allocator ===
     let mut frame_allocator = init_frame_allocator();
-
-    // === IDT (Page Fault Handler) ===
     init_idt();
 
-    // === Heap ===
     unsafe {
         let heap_size = 1024 * 1024;
-        if init_heap(&mut frame_allocator, heap_size).is_ok() {
-            println!("Heap initialized successfully");
-        }
+        let _ = init_heap(&mut frame_allocator, heap_size);
     }
 
-    // === Test Paging ===
-    println!("\nTesting 4-level page table mapping...");
+    // === Emotional Scheduler Demo ===
+    println!("\n=== Emotional Scheduler Demo ===");
 
-    // Create a page table (we'll use a simple one for testing)
-    // In a real kernel we would have a proper PML4
-    static mut TEST_PAGE_TABLE: PageTable = PageTable { entries: [PageTableEntry(0); 512] };
+    let scheduler = SelfImprovingScheduler::new();
 
-    unsafe {
-        TEST_PAGE_TABLE.zero();
+    let mut tasks = [
+        scheduler.create_task(10),
+        scheduler.create_task(8),
+        scheduler.create_task(12),
+    ];
 
-        let virtual_page = Page::containing_address(0x4000_0000); // Example virtual address
-        if let Some(frame) = frame_allocator.allocate_frame() {
-            let flags = PageTableEntry::PRESENT | PageTableEntry::WRITABLE;
+    // Simulate some feedback to evolve emotional states
+    scheduler.collect_feedback(&mut tasks[0], true, 25);   // Should become Focused
+    scheduler.collect_feedback(&mut tasks[1], false, 120); // Should become Stressed
+    scheduler.collect_feedback(&mut tasks[2], true, 200);  // Should become Curious
 
-            match PagingManager::map_page(
-                &mut TEST_PAGE_TABLE,
-                virtual_page,
-                frame,
-                flags,
-                &mut frame_allocator,
-            ) {
-                Ok(()) => println!("  Successfully mapped virtual page to frame {}", frame.number()),
-                Err(e) => println!("  Mapping failed: {}", e),
-            }
-        }
+    println!("\nBefore scheduling:");
+    for task in &tasks {
+        println!("  Task {}: priority={}, emotional={:?}", task.id, task.priority, task.emotional_state);
     }
 
-    println!("\nPaging test complete!");
-    println!("Next: Full bootloader integration + higher-half kernel");
+    scheduler.schedule(&mut tasks);
+
+    println!("\nAfter emotional-aware scheduling (sorted):");
+    for task in &tasks {
+        println!("  Task {}: priority={}, emotional={:?}", task.id, task.priority, task.emotional_state);
+    }
+
+    println!("\nEmotional runtime demo complete.");
+    println!("Next: Deeper swarm integration + persistent emotional state");
 
     loop {}
 }
