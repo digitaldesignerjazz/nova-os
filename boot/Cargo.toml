@@ -1,0 +1,11 @@
+[package]
+name = "nova-os-boot"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["Sven Normen Esslinger <esslinger@esslinger.co>"]
+description = "Bootloader binary for Nova OS"
+
+[dependencies]
+bootloader = { version = "0.11", features = ["map_physical_memory"] }
+nova-os = { path = ".." }
