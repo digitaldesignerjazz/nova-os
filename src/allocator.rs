@@ -9,7 +9,8 @@ use crate::memory::{BitmapFrameAllocator, FrameAllocator, PAGE_SIZE};
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
-/// Find and allocate a contiguous range of free frames
+/// Find and allocate a contiguous range of free frames.
+/// Returns the starting physical address of the contiguous block.
 fn allocate_contiguous_frames(
     allocator: &mut BitmapFrameAllocator,
     frames_needed: usize,
@@ -20,33 +21,33 @@ fn allocate_contiguous_frames(
 
     let total_frames = allocator.frame_count();
 
-    // Scan for a contiguous block of free frames
+    // Scan linearly for a contiguous block of free frames
     'outer: for start in 0..=(total_frames - frames_needed) {
-        // Check if all frames in [start, start + frames_needed) are free
+        // Check if the entire range [start .. start+frames_needed) is free
         for offset in 0..frames_needed {
             if !allocator.is_frame_free(start + offset) {
                 continue 'outer;
             }
         }
 
-        // Found a contiguous free region! Allocate all frames in it
-        let heap_start = start * PAGE_SIZE;  // We need the virtual/physical address
-
+        // Found a contiguous free region!
+        // Directly mark all frames in the range as used
         for offset in 0..frames_needed {
-            // Allocate each frame (this also marks them as used)
-            if allocator.allocate_frame().is_none() {
-                // Should not happen if is_frame_free was correct
-                return None;
-            }
+            allocator.mark_frame_as_used(start + offset);
         }
 
-        return Some(heap_start);
+        // Update next_free heuristic
+        if start + frames_needed > allocator.next_free_hint() {
+            // We can't easily update private fields, so we leave it
+        }
+
+        return Some(start * PAGE_SIZE);
     }
 
     None
 }
 
-/// Initialize the heap using contiguous frames
+/// Initialize the heap using contiguous frames from the frame allocator
 pub unsafe fn init_heap(
     frame_allocator: &mut BitmapFrameAllocator,
     heap_size: usize,
@@ -62,6 +63,6 @@ pub unsafe fn init_heap(
 }
 
 // TODO:
-// - Optimize contiguous search (current is O(n))
-// - Add support for dynamic heap growth
-// - Consider using a better data structure for free regions
+// - Optimize contiguous search (current O(n) scan)
+// - Add a way to update next_free after bulk allocation
+// - Support dynamic heap growth by allocating more frames later
